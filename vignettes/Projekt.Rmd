@@ -1,0 +1,32 @@
+---
+title: "Projekt"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Projekt}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "# "
+)
+```
+
+
+## Zadání projektu
+
+> **Pro vybrané povodí zjistěte očekávané změny hydrologické bilance a vyhodnoťte účinek opatření v podobě zvýšení retence půdy na ukazatele hydrologického sucha**.
+
+
+- pro ulehčení projektu byl vytvořen balík KZ2020, který obsahuje veškerá data potřebná pro zpracování projektu
+- 
+
+---
+
+
+```{r setup}
+library(KZ2020)
+```
+
