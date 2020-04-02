@@ -1,6 +1,8 @@
 ---
 title: "Projekt"
-output: rmarkdown::html_vignette
+output: 
+  rmarkdown::html_vignette:
+    toc: yes
 vignette: >
   %\VignetteIndexEntry{Projekt}
   %\VignetteEngine{knitr::rmarkdown}
@@ -10,6 +12,7 @@ vignette: >
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
+  prompt = TRUE,
   comment = "# "
 )
 ```
@@ -17,16 +20,224 @@ knitr::opts_chunk$set(
 
 ## Zadání projektu
 
-> **Pro vybrané povodí zjistěte očekávané změny hydrologické bilance a vyhodnoťte účinek opatření v podobě zvýšení retence půdy na ukazatele hydrologického sucha**.
+> **Pro vybrané povodí zjistěte očekávané změny hydrologické bilance v měsíšním kroku a vyhodnoťte účinek opatření v podobě zvýšení/snížení retence půdy na ukazatele hydrologického sucha**.
 
 
-- pro ulehčení projektu byl vytvořen balík KZ2020, který obsahuje veškerá data potřebná pro zpracování projektu
-- 
+- pro ulehčení projektu byl vytvořen balík `KZ2020`, který obsahuje veškerá data potřebná pro zpracování projektu
+- balík je možno stáhnout [ZDE](ZDE)
+- toto zadání je přístupné zároveň po nainstalování balíku KZ2020 příkazem `vignette("Projekt", package="KZ2020")`
 
 ---
 
+## Upřesnění
 
-```{r setup}
+Modelování dopadů změny klimatu probíhá podle následujícího schematu:
+
+![](http://rscn.vuv.cz/rscn/wp-content/uploads/2014/01/obr2-1.png)
+
+Stručně řečeno: pomocí pozorovaných dat (srážky, teplota a odtok) nakalibrujeme parametry hydrologického modelu Bilan, vytvoříme scénářová data reprezentující budoucí klima a pomocí modelu Bilan s již nakalibrovanými parametry simulujeme budoucí hydrologickou bilanci. Pokud chceme zjistit vliv změny retence půdy na hydrologickou bilanci, musíme změnit jeden z parametrů modelu Bilan a simulaci opakovat.
+
+Z toho vyplývá následující struktura činností:
+
+1. Výběr povodí a získání pozorovaných dat
+2. Kalibrace hydrologického modelu a její vyhodnocení
+3. Tvorba scénářových řad srážek a teploty
+4. Simulace budoucí hydrologické bilance s a bez opatření
+5. Vyhodnocení ukazatelů sucha
+
+Následující text je dle tohoto dělení členěn. Postup hydrologického modelování dopadů změny klimatu je více rozveden [např. zde](https://mediasite.czu.cz/Mediasite/Play/b246014081574610bdf8a1f29a9ec1d11d).
+
+Výstupem cvičení bude stručný protokol psaný v Rmarkdownu (bylo probíráno na cvičení). Šablona protokolu je dostupná [ZDE](ZDE). Informace o využití RMarkdownu jsou uvedeny [např. zde](https://rmarkdown.rstudio.com/). Protokoly je možné vypracovávat ve dvojicích.
+
+**Protokol bude odevzdán jako html dokument přes modul na Moodle - jiné formy odevzdávání nejsou akceptovány.**
+
+## 1. Výběr povodí a data
+
+Po náhrání balíku `KZ2020` 
+
+```{r setup, warning=FALSE, message=FALSE}
 library(KZ2020)
 ```
+
+je možné zobrazit zahrnuté datasety pomocí
+
+```{r}
+data(package="KZ2020")
+```
+
+Dataset nahrajeme pomocí `data(NAZEV DATASETU)`, jednotlivé datasety jsou dokumentované, viz např.
+
+```{r}
+data("povodi")
+?povodi
+```
+
+### 1.1 Výběr povodí
+
+Dataset `povodi` je prostorový objekt třídy `SpatialPolygonsDataFrame`. Využijeme následující funkce: 
+
+- `plot` pro vykreslení povodí
+- `povodi@data` pro zobrazení atributové tabulky
+- `povodi[i, ]` pro zobrazení `i`tého prvku
+
+> Zobrazte atributovou tabulku a dle uvážení vyberte jedno z povodí. Zde budeme pracovat s povodím Moravy (Raškov, DBCN 34500). Pro vlastní práci vyberte jakékoliv **jiné** povodí.
+
+Vyberu povodí na základě vybraného `DBCN` (např. 345000) a uložím ho do nové proměnné `mojePov`:
+
+```{r, eval=-1}
+povodi@data
+mojePov = povodi[povodi$DBCN == 345000, ]
+plot(mojePov)
+```
+
+Interaktivní mapu je možno zobrazit (a následně uložit výřez v RStudiu) pomocí balíku `leaflet`.
+
+```{r, fig.width=8, fig.height=8, message=FALSE, warning=FALSE}
+library(leaflet)
+leaflet(mojePov) %>% addTiles(urlTemplate = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png') %>% addPolygons()
+```
+
+
+### 1.2 Získání dat pro kalibraci modelu Bilan
+
+Hydrometeorologická data jsou opět obsažena v balíku KZ2020 - dataset `hydrometeo`. Jedná se o `data.table` (tabulku), struktura je popsána v nápovědě k datasetu, tj. 
+
+```{r}
+data("hydrometeo")
+?hydrometeo
+```
+
+Práce s `data.table` byla probírána na cvičení, popis základních fukcí je uveden na moodlu v sekci data.table. Pro další práci potřebujeme vybrat data pro stejné povodí, pro které jsme vybrali rozvodnici (zde DBCN=345000).
+
+```{r}
+dta = hydrometeo[DBCN == 345000, ]
+dta
+```
+
+Výhodou data.tablu je možnost efektivně provádět operace po skupinách dat. Typickým příkladem je agregace data z denního kroku do měsíčního (potřebujeme pro model Bilan). Provedeme následovně:
+
+```{r}
+dta = dta[, .(DTM = DTM[1], Q = mean(Q), P = sum(P), T = mean(T), R = sum(R)), by = .(year(DTM), month(DTM))]
+dta
+```
+
+Data.table je rovněž efektivní z hlediska zápisu. Pro vykreslení základních veličin můžeme např. psát:
+
+```{r, fig.width=8}
+par(mar = c(3, 3, 1, 1), mgp = c(1.5, .5, 0))
+dta[, plot(DTM, T, type = 'l')]
+dta[, plot(DTM, P, type = 'l')]
+
+```
+
+Základní statistické charakteristiky dat je možné zobrazit následovně:
+
+```{r}
+summary(dta)
+```
+
+Další tipy: 
+- informačně přínosným grafem může být i např. boxplot - pro jednotlivé měsíce (a různé veličiny) např. `dta[, boxplot(T ~ month)]`
+- dalším užitečným grafem je histogram - např. `dta[, hist(P)]` nebo pro jednotlivé měsíce `par(mfrow = c(3, 4)); dta[, .(hist(P)), by = month]`
+- efektní je i využití balíku `ggplot2` - např. 
+
+```{r, eval=FALSE}
+ggplot(dta) + geom_histogram(aes(x = P)) + facet_wrap(~month)
+```
+
+
+
+
+## 2. Kalibrace hydrologického modelu
+
+Práci s modelem Bilan v R přibližuje [tento tutorial](https://mediasite.czu.cz/Mediasite/Play/651d0d96c7254149a5ccdd3545293f791d). 
+
+### Model Bilan
+
+Manuál modelu je ke stažení [zde](http://bilan.vuv.cz/bilan/wp-content/uploads/2015/03/bilan_man_cs_2015-06-23.pdf). Soubor k instalaci je v adresáři bilan. Soubor je nutné stáhnout a nainstalovat.
+
+V Rku vytvoříme novou instanci modelu Bilan pomocí funkce `bil.new`
+
+```{r}
+library(bilan)
+args(bil.new)
+```
+
+kde `type` určuje typ modelu (`m` - měsíční, `d` - denní), `file` umožňuje vytvořit model na základě __výstupního__ souboru z modelu Bilan, `data` umožňuje vytvořit model na základě __vstupního__ souboru do modelu Bilan. 
+
+Tedy například pro povodí s `DBCN==017000`, píšeme
+
+```{r}
+b = bil.new(type='m', data = dta[!is.na(R)])
+```
+
+Optimalizace parametrů je možná pomocí příkazu `bil.optimize`, nicméně nejdříve je nutné odhadnout evapotranspiraci pomocí funkce `bil.pet`.
+
+
+```{r}
+bil.pet(b)
+res = bil.optimize(b)
+head(res)
+```
+
+
+Ve výše uvedeném případě jsme použili defaultní nastavení jak v případě funkce `bil.pet` (zde je možné nastavit způsob odhadu a jeho parametry - viz `?bil.pet`), tak i v případě `bil.optimize`. Parametry optimalizace je možné nastavit pomocí funkce `bil.set.optim`. Zejména můžeme ovlivnit
+
+* metodu optimalizace - `method`
+  * `BS` - půlení intervalu
+  * `DE` - diferenciální evoluce
+* kritéria optimalizace - `crit`
+  * `MSE` - střední kvadratická chyba
+  * `NS` - Nash-Sutcliffe
+  * `LNNS` - log Nash-Sutcliffe
+  * `MAPE` - střední procentuální chyba
+  * `MAE` - střední absolutní chyba
+* počet iterací `max_iter`
+
+Po provedení optimalizace můžeme zobrazit parametry pomocí příkazu `bil.get.params`:
+```{r}
+bil.get.params(b)
+bil.write.file(b, 'vystup.bil')
+```
+
+Parametry je rovněž možné načíst z Bilanovského výstupního souboru:
+```{r }
+
+bil.read.params.file(b, 'vystup.bil')
+bil.get.params(b)
+```
+
+### Vizuální vyhodnocení kalibrace
+
+```{r, eval=TRUE, fig.width=8}
+library(dygraphs)
+
+r = ts(res[, R], start = c(res[1, year(DTM)], res[1, month(DTM)]), frequency = 12 )
+rm = ts(res[, RM], start = c(res[1, year(DTM)], res[1, month(DTM)]), frequency = 12 )
+re = cbind(r, rm)
+
+dygraph(re) %>% dyRangeSelector() %>% dyRoller(rollPeriod = 1)
+
+```
+
+### Kvantitativní vyhodnocení kalibrace
+
+- možno použít balík `hydroGOF`
+- např. `res[, hydroGOF::gof(RM, R)]`
+
+
+## 3. Tvorba scénářových řad srážek a teploty
+
+Pro tvorbu scénářových řad srážek a teploty použijeme jednoduchou přírůstkovou metodu. Přírůstková metoda je jednoduchý postup využívající informaci o změnách vybraných veličin v simulacích klimatických modelů k úpravě pozorovaných řad. Přírůstkové faktory jsou zpravidla odhadnuty pro jednotlivé měsíce porovnáním simulace klimatického modelu pro budoucí (např. 2070-2099) a kontrolní období (např. 1961-1990). V případě souborů klimatických modelů mohou být odhadnuty na základě změn rozdělení pravděpodobnosti pro jednotlivé veličiny mezi vybranými obdobími. Přírůstkové faktory pro teplotu ($\Delta T$) jsou odvozeny jako rozdíl průměrné teploty mezi budoucím a kontrolním obdobím, v případě srážek jsou přírůstkové faktory ($\Delta P$) vypočteny jako podíl průměrných srážek v budoucím a kontrolním období. 
+
+Scénářové řady pro jednotlivé veličiny jsou pak tvořeny úpravou pozorovaných řad příslušným způsobem (tj. přičtením pro teplotu a násobením pro srážky). Obecně lze analogicky postupovat i v případě jiných veličin simulovaných klimatickým modelem. Vždy je však třeba uvážit, do jaké míry jsou simulace dané veličiny realistické. 
+
+
+
+
+## 4. Simulace budoucí hydrologické bilance s a bez opatření
+
+## 5. Vyhodnocení ukazatelů sucha
+
+
 
