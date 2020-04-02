@@ -23,7 +23,7 @@ knitr::opts_chunk$set(
 
 ## Zadání projektu
 
-> **Pro vybrané povodí zjistěte očekávané změny hydrologické bilance v měsíšním kroku a vyhodnoťte účinek opatření v podobě zvýšení/snížení retence půdy na ukazatele hydrologického sucha**.
+> **Pro vybrané povodí zjistěte očekávané změny hydrologické bilance v měsíšním kroku a vyhodnoťte účinek opatření v podobě zvýšení/snížení retence půdy o 50 % na ukazatele hydrologického sucha**.
 
 
 - pro ulehčení projektu byl vytvořen balík `KZ2020`, který obsahuje veškerá data potřebná pro zpracování projektu
@@ -197,6 +197,16 @@ Ve výše uvedeném případě jsme použili defaultní nastavení jak v přípa
   * `MAE` - střední absolutní chyba
 * počet iterací `max_iter`
 
+Nastavení parametrů kalibrace může vypadat např. následovně:
+
+```{r}
+bil.set.optim(b, method = "DE")
+bil.set.params.lower(b, list(Spa = 20))
+res = bil.optimize(b)
+```
+
+
+
 Po provedení optimalizace můžeme zobrazit parametry pomocí příkazu `bil.get.params`:
 ```{r}
 bil.get.params(b)
@@ -237,21 +247,21 @@ Scénářové řady pro jednotlivé veličiny jsou pak tvořeny úpravou pozorov
 
 Pozorované řady srážek a teploty máme k dispozici v datasetu `hydrometeo`, z něj jsme vybrali data pro zvolené povodí a vložili je do proměnné `dta`. Rocvodnici povodí jsme uložili do proměnné `mojePov`. Změny měsíčních srážek a teploty jsou v proměnných `gcm_pr_ch` a `gcm_tas_ch` (viz nápověda k těmto datasetům). Jedná se o objekty třídy `RasterBrick` - tj. vícevrstvé rastrové objekty, kdy jednotlivé vrstvy odpovídají měsícům. Jednotlivé změny můžeme zobrazit např. pomocí
 
-```{r, fig.width=8, fig.height=5}
+```{r plot-gcm, fig.width=8, fig.height=5}
 data("gcm_pr_ch")
 plot(gcm_pr_ch)
 ```
 
 Jak lze vidět ze souřadnic, data jsou pro celou Evropu. Pro vyříznutí změn pro naše zájmové území (dle polygonu `mojePov`) použijeme
 
-```{r}
+```{r extract-pr}
 chp = extract(gcm_pr_ch, mojePov, fun = mean, weights = TRUE)
 chp
 ```
 
 Pro naše povodí tedy lednové srážky rostou o ```r round((chp[1, 1] - 1) * 100, 3)``` %, únorové o ```r round((chp[1, 2] - 1) * 100, 3)``` %, atd. Podobně teplota:
 
-```{r}
+```{r extract-tas}
 data("gcm_tas_ch")
 cht = extract(gcm_tas_ch, mojePov, fun = mean, weights = TRUE)
 cht
@@ -295,7 +305,89 @@ dta[, futT := T + cht]
 
 ## 4. Simulace budoucí hydrologické bilance s a bez opatření
 
-## 5. Vyhodnocení ukazatelů sucha
+Nyní můžeme přikročit k simulaci hydrologické bilance dle zadání - celkově budeme mít 4 simulace: 
+
+- pro současný stav, 
+- pro podmínky ovlivněné změnou klimatu bez opatření,
+- pro podmínky ovlivněné změnou klimatu s 50% zvýšením retence půdy, 
+- pro podmínky ovlivněné změnou klimatu s 50% snižením retence půdy.
+
+Postup je ve všech případech obdobný:
+
+- vytvoříme model (včetně nakalibrovaných paramterů - tj. použijeme funkci `bil.clone` na nakalibrovaný model nebo načteme parametry ze souboru)
+- vložíme příslušná data
+- pokud simuluje efekt opatření upravíme parametr `Spa`
+- provedeme simulaci
+
+### 4.1 Současný stav
+
+Vytvoříme model:
+
+```{r}
+b.ctrl = bil.clone(b)
+```
+
+nebo 
+
+```{r}
+b.ctrl = bil.new(type = "m", file = "vystup.bil")
+```
+
+spočteme potenciální evapotranspiraci a provedeme simulaci:
+
+```{r}
+bil.pet(b.ctrl)
+res.ctrl = bil.run(b.ctrl)
+```
+
+### 4.2 Budoucí stav bez opatření
+
+Vytvoříme model, vložíme data, spočítáme PET a provedeme simulaci:
+
+```{r}
+b.fut = bil.clone(b)
+bil.set.values(b.fut, dta[, .(DTM, P = futP, T = futT)])
+bil.pet(b.fut)
+res.fut = bil.run(b.fut)
+```
+
+
+### 4.3 Budoucí stav s opatřeními
+
+Vytvoříme model, upravíme parametry, spočítáme PET a provedeme simulaci:
+
+Nejdříve snížení retence:
+
+```{r}
+b.fut_dec = bil.clone(b.fut)
+pars = bil.get.params(b.fut_dec)
+pars
+spa = pars[1, 2]
+bil.set.params.curr(b.fut_dec, list(Spa = .5 * spa))
+bil.pet(b.fut_dec)
+res.fut_dec = bil.run(b.fut_dec)
+```
+
+Pak zvýšení retence:
+
+
+```{r}
+b.fut_inc = bil.clone(b.fut)
+bil.set.params.curr(b.fut_inc, list(Spa = 1.5 * spa))
+bil.pet(b.fut_inc)
+res.fut_inc = bil.run(b.fut_inc)
+```
+
+
+Nakonec vytvoříme data.table obsahující simulaci odtoku dle všech variant pro další analýzu:
+
+
+```{r}
+res = data.table(DTM = dta$DTM, ctrl = res.ctrl$RM, fut = res.fut$RM, fut_dec = res.fut_dec$RM, fut_inc = res.fut_inc$RM)
+```
+
+
+## 5. Vyhodnocení změn hydrologické bilance a ukazatelů sucha
 
 
 
