@@ -19,6 +19,6 @@ gcm_pr_ch
 gcm_tas_ch
 }
 \description{
-Změny srážek a teploty pro jednotlivé měsíce dle simulace CMIP5 model HadGEM-ESM2 podle RCP8.5
+Změny srážek a teploty pro jednotlivé měsíce dle simulace CMIP5 model HadGEM-ESM2 podle RCP8.5 mezi obdobími 2070-2100 a 1970-2000
 }
 \keyword{datasets}

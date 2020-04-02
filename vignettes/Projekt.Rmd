@@ -1,5 +1,8 @@
 ---
-title: "Projekt"
+title: |
+  ![](KVHEM-logo.png){width=1in} Zadání projektu
+subtitle: "Hydrologické modelování dopadů klimatické změny"
+author: Martin Hanel & Adam Vizina
 output: 
   rmarkdown::html_vignette:
     toc: yes
@@ -33,7 +36,7 @@ knitr::opts_chunk$set(
 
 Modelování dopadů změny klimatu probíhá podle následujícího schematu:
 
-![](http://rscn.vuv.cz/rscn/wp-content/uploads/2014/01/obr2-1.png)
+![](modelovaniKZ.png)
 
 Stručně řečeno: pomocí pozorovaných dat (srážky, teplota a odtok) nakalibrujeme parametry hydrologického modelu Bilan, vytvoříme scénářová data reprezentující budoucí klima a pomocí modelu Bilan s již nakalibrovanými parametry simulujeme budoucí hydrologickou bilanci. Pokud chceme zjistit vliv změny retence půdy na hydrologickou bilanci, musíme změnit jeden z parametrů modelu Bilan a simulaci opakovat.
 
@@ -232,8 +235,63 @@ Pro tvorbu scénářových řad srážek a teploty použijeme jednoduchou přír
 
 Scénářové řady pro jednotlivé veličiny jsou pak tvořeny úpravou pozorovaných řad příslušným způsobem (tj. přičtením pro teplotu a násobením pro srážky). Obecně lze analogicky postupovat i v případě jiných veličin simulovaných klimatickým modelem. Vždy je však třeba uvážit, do jaké míry jsou simulace dané veličiny realistické. 
 
+Pozorované řady srážek a teploty máme k dispozici v datasetu `hydrometeo`, z něj jsme vybrali data pro zvolené povodí a vložili je do proměnné `dta`. Rocvodnici povodí jsme uložili do proměnné `mojePov`. Změny měsíčních srážek a teploty jsou v proměnných `gcm_pr_ch` a `gcm_tas_ch` (viz nápověda k těmto datasetům). Jedná se o objekty třídy `RasterBrick` - tj. vícevrstvé rastrové objekty, kdy jednotlivé vrstvy odpovídají měsícům. Jednotlivé změny můžeme zobrazit např. pomocí
+
+```{r, fig.width=8, fig.height=5}
+data("gcm_pr_ch")
+plot(gcm_pr_ch)
+```
+
+Jak lze vidět ze souřadnic, data jsou pro celou Evropu. Pro vyříznutí změn pro naše zájmové území (dle polygonu `mojePov`) použijeme
+
+```{r}
+chp = extract(gcm_pr_ch, mojePov, fun = mean, weights = TRUE)
+chp
+```
+
+Pro naše povodí tedy lednové srážky rostou o ```r round((chp[1, 1] - 1) * 100, 3)``` %, únorové o ```r round((chp[1, 2] - 1) * 100, 3)``` %, atd. Podobně teplota:
+
+```{r}
+data("gcm_tas_ch")
+cht = extract(gcm_tas_ch, mojePov, fun = mean, weights = TRUE)
+cht
+```
+
+roste v lednu o ```r round(cht[1, 1], 3)``` °C, v únoru o ```r round(cht[1, 2], 3)``` °C, atd.
+
+Abychom mohli transformovat naše pozorovaná data pomocí těchto změn, musíme zahrnout vektory změn pro příslušné měsíce do datasetu `dta`. Vytvoříme tedy data.table se změnami
+
+```{r}
+ch = data.table(month = 1:12, chp = chp[1, ], cht = cht[1, ])
+```
+
+a pomocí tzv. "fast join" připojíme k datasetu `dta`:
+
+```{r}
+dta = ch[dta, on = 'month']
+```
+
+Syntaxe výše jednoduše říká, že napojuji dataset `ch` na dataset `dta` a společným klíčem je pole `month`. Změny srážek a teploty můžeme pochopitelně vykreslit např. pomocí
+
+```{r, fig.width=8}
+par(mfrow=c(1, 2), mgp = c(1.5, .5, 0), mar = c(3, 3, 1, 1))
+ch[, plot(month, chp, type = 'l', ylab = 'změna srážek')]
+ch[, plot(month, cht, type = 'l', ylab = 'změna teploty')]
+
+```
 
 
+Pak jen potřebujeme spočítat ovlivněnou řadu teplot a srážek - jednoduše tak, že současné srážky (`P`) přenásobíme přírůstkovým faktorem `chp`
+
+```{r}
+dta[, futP := P * chp]
+```
+
+a k současné teplotě připočteme přírůstkový faktor pro teplotu `cht` :
+
+```{r}
+dta[, futT := T + cht]
+```
 
 ## 4. Simulace budoucí hydrologické bilance s a bez opatření
 
