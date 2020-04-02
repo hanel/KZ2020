@@ -1,12 +1,12 @@
 Package: KZ2020
 Type: Package
-Title: What the package does (short line)
+Title: Support for HMKZ Faculty of Environemtal Sciences CULS Prague lecture
 Version: 1.0
 Date: 2020-04-01
-Author: Who wrote it
-Maintainer: Who to complain to <yourfault@somewhere.net>
-Description: More about what it does (maybe more than one line)
-License: What license is it under?
+Author: Martin Hanel
+Maintainer: Martin Hanel <hanel@fzp.czu.cz>
+Description: Provides datasets
+License: Private
 Depends:
  data.table,
  raster,
