@@ -434,9 +434,70 @@ ggplot(melt(res, id.vars = 'DTM'))+
   ylab('Měsíc')+xlab('Odtok [mm]')
 ```
 
-
 ### 5.2 Vyhodnocení hydrologického sucha
 
+Hydrologické sucho je definováno pro povrchové toky určitým počtem za sebou jdoucích dní, týdnů, měsíců i roků s výskytem nízkých průtoků vzhledem k měsíčním či ročním normálovým hodnotám. Hydrologické sucho se vyskytuje zpravidla ke konci déle trvajícího období sucha, ve kterém nepadaly kapalné ani smíšené srážky. Hodnocení hydrologického sucha pomocí metody nedostatkových objemů. 
+
+Všeobecnou definici uvádí Szpindov (1974). Průtok je popsaný časovou funkcí $Z(t)$. Funkce $Z(t)$ je v čase proměnná v požadavku na vodu. Pro časový integrál $<tp_i,tk_i>$, pro který je splněné podmínka $Z(t_i) > Q(t_i)$ definujeme určitý integrál $W_i$:
+
+
+$$ W_i = \int_{tp_i} ^{tk_i}[Z(t_i)-Q(t_i)]dt $$
+
+kde: $i=1, 2, 3, …, n, n$ - počet deficitů v řešeném období,
+$tp_i$ – čas počátku $i$-tého deficitu,
+$tk_i$ – čas konce $i$-tého deficitu.
+
+1) Stanovení požadavku na vodu (v našem případě měsíční minimální zůstatkový průtok)
+
+```{r}
+resDV=melt(res, id.vars = 'DTM')
+area=mojePov@data$AREA
+
+library(lubridate) # Funkce počtu dní v měsící s respektováním přechodných let
+resDV[, Q:=(area*value)/(days_in_month(DTM)*24*3.6)]
+mzp=resDV[variable=='ctrl', 0.7*quantile(Q, 0.1)]
+```
+
+
+2) Vyhodnocení nedostatkových objemů
+
+Vyhodnocení bude provedeno:
+
+a) Deficit (objem v $m^3$) v jednotlivých letech pro kontrolní a výhledové období + opatření
+b) Maximální deficit (objem v $m^3$) suché události (součet všecch po sobě jdoucích deficitů) pro kontrolní a výhledové období + opatření
+c) Délka trvání v měsících (maximální, průměrná za rok) pro kontrolní a výhledové období + opatření
+
+```{r}
+resDV[, mzp:=mzp]
+head(resDV)
+
+#a)
+resDV[,deficit:=0]; resDV[Q<mzp, deficit:=days_in_month(DTM)*24*3600*(mzp-Q)]
+resDV_year=resDV[, sum(deficit), by=.(variable,year(DTM))]
+head(resDV_year)
+```
+
+
+
+```{r, fig.width=7}
+ggplot(resDV_year)+
+  geom_line(aes(year, V1, col=variable))+
+  geom_smooth(aes(year, V1, col=variable, fill=variable),alpha=0.2) + 
+  theme_minimal() + 
+  ylab('Měsíc')+xlab('Odtok [mm]')
+```
+
+
+### Závěr
+
+Krátké slovní zhodnocení dopadů změny klimatu na hydrologickou bilanci, hydrologické sucho pro současný stav, výhledový stav s opatřeními pi bez nich.
+
+Napište (úvaha), která opatření (minimálně 3) mají smysl pro zlepšení:
+
+a) dostupnosti vodních zdrojů,
+b) zlepšení vodního režimu v krajině,
+
+výběr doplňte vysvětlením PROČ.
 
 
 
