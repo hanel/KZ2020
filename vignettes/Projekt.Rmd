@@ -389,5 +389,57 @@ res = data.table(DTM = dta$DTM, ctrl = res.ctrl$RM, fut = res.fut$RM, fut_dec = 
 
 ## 5. Vyhodnocení změn hydrologické bilance a ukazatelů sucha
 
+### 5.1 Hydrologická bilance
+
+Hydrologická bilance spočívá ve vyjádření všech vstupů a výstupů vody z povodí a vyjádření změn v zásobách (∆S). Vstupy zahrnují především srážky (P), výstupy pak evaporaci (E), transpiraci (T) (někdy souhrnně označenou jako evapotranspiraci (ET) a celkový odtok(R). Základní rovnice hydrologické bilance pro pevniny pak vypadá následovně:
+
+$$P - ET - R = ∆S$$
+Celkový odtok lze dále rozdělit na povrchový odtok, hypodermický odtok a základní odtok. Hodnocení změn hydrologické bilance je založeno na rozboru jednotlivých veličin ze základní rovnice. Rozdíl srážek a evapotranspirace se někdy nazývá vodní bilance (ne zcela metodicky správně).
+
+$$P - ET$$
+
+Vyhodnocení je nezbytné provést:
+
+1) V jednotlivých letech
+- dlouhodobé trendy (graficky, regrese, ...) jednotlivých veličin (odtok, srážka, evapotranspirace, vodní bilance)
+a) graficky
+```{r, fig.width=7}
+library(ggplot2)
+
+res_year=res[,.(ctrl=sum(ctrl), fur=sum(fut),fut_dec=sum(fut_dec), fut_inc=sum(fut_inc)), by=year(DTM)]
+res_year=melt(res_year, id.vars = 'year')
+
+ggplot(res_year)+
+  geom_line(aes(year, value, col=variable))+
+  geom_smooth(aes(year, value, col=variable, fill=variable),alpha=0.2) + 
+  theme_minimal() + 
+  ylab('Odtok [mm/rok]')
+
+```
+
+b) regrese
+```{r}
+trend_ctrl=lm(res_year[variable=='ctrl']$value~res_year[variable=='ctrl']$year)
+print(trend_ctrl)
+summary(trend_ctrl)
+```
+
+2) V jednotlivých měsících
+- změny veličin pro dílčí měsíce  (odtok, srážka, evapotranspirace, vodní bilance), např. boxplot, tabelárně
+
+```{r, fig.width=7}
+ggplot(melt(res, id.vars = 'DTM'))+
+  geom_boxplot(aes(as.factor(month(DTM)), value, col=variable))+
+  theme_minimal()+
+  ylab('Měsíc')+xlab('Odtok [mm]')
+```
+
+
+### 5.2 Vyhodnocení hydrologického sucha
+
+
+
+
+
 
 
